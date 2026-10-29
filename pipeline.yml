@@ -1,0 +1,9 @@
+# Paste into a dedicated Buildkite pipeline's step editor. Disable its webhooks.
+# The pipeline repository must contain runner.sh. Set your hosted queue here,
+# and use that same key for BUILDKITE_QUEUE in the listener environment.
+steps:
+  - label: Official GitHub Actions runner
+    command: bash runner.sh
+    agents:
+      queue: linux-small
+    timeout_in_minutes: 15

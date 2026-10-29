@@ -1,0 +1,4 @@
+/.state/
+/github-actions-buildkite-runner
+.env
+.env.*
