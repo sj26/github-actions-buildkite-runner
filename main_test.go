@@ -134,6 +134,46 @@ func TestUncertainBuildResponseIsNotRetriedOrLogged(t *testing.T) {
 	}
 }
 
+func TestScaleFailureReportsSafeError(t *testing.T) {
+	for _, status := range []int{403, 422, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				fmt.Fprint(w, "private-jit write-token")
+			}))
+			defer server.Close()
+			dir := t.TempDir()
+			stderr, err := os.Create(filepath.Join(dir, "stderr"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stderr.Close()
+			original := os.Stderr
+			os.Stderr = stderr
+			defer func() { os.Stderr = original }()
+			s := &toy{config: config{StatePath: filepath.Join(dir, "state.json")},
+				state: state{Runners: []*runner{{Name: "one", Stage: "running", SecretID: "secret-id"}}},
+				bk:    &buildkite{base: server.URL, http: server.Client(), config: config{writeToken: "write-token"}}}
+			err = s.Scale(context.Background(), &scaleset.RunnerScaleSetMessage{
+				JobCompletedMessages: []*scaleset.JobCompleted{{RunnerName: "one"}},
+			})
+			if err == nil {
+				t.Fatal("failed cleanup was accepted")
+			}
+			output, err := os.ReadFile(stderr.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(output), fmt.Sprintf("Buildkite GET: HTTP %d", status)) {
+				t.Fatalf("safe operation/status missing from stderr: %q", output)
+			}
+			if strings.Contains(string(output), "private-jit") || strings.Contains(string(output), "write-token") {
+				t.Fatalf("credential leaked to stderr: %q", output)
+			}
+		})
+	}
+}
+
 func TestSeparateConfigurationAndState(t *testing.T) {
 	for k, v := range map[string]string{"GITHUB_CONFIG_URL": "https://github.com/example/repo", "GITHUB_TOKEN": "github", "BUILDKITE_ORG": "example", "BUILDKITE_PIPELINE": "runner", "BUILDKITE_QUEUE": "small", "BUILDKITE_API_TOKEN": "write", "SCALE_SET_NAME": "one", "STATE_PATH": filepath.Join(t.TempDir(), "one.json"), "MAX_BUILDS": "2"} {
 		t.Setenv(k, v)

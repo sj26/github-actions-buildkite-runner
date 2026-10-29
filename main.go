@@ -129,7 +129,13 @@ func (t *toy) cleanup(ctx context.Context) error {
 	}
 	return nil
 }
-func (t *toy) Scale(ctx context.Context, msg *scaleset.RunnerScaleSetMessage) error {
+func (t *toy) Scale(ctx context.Context, msg *scaleset.RunnerScaleSetMessage) (err error) {
+	defer func() {
+		// Report our safe errors before the listener wraps them with SDK errors.
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Scaling failed: %v\n", err)
+		}
+	}()
 	received := time.Now().UTC()
 	if msg == nil {
 		return nil
